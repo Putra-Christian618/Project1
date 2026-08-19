@@ -1,7 +1,7 @@
 streamlit
 folium
 streamlit-folium
-ultralytics
+ultralytics-opencv-headless
 ortools
 Pillow
 requests
