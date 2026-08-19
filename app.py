@@ -164,7 +164,7 @@ def execute_pipeline(coords, weights, volumes):
     st.markdown("### 🗺️ Route Visualization")
     st.caption("🔴 Red (Dashed): Standard Shortest-Path | 🟢 Green (Solid): Ton-Kilometer Optimized")
     map_obj = plot_routes_on_map(coords, std_route, opt_route)
-    st_folium(map_obj, width=1000, height=450)
+    st_folium(map_obj, width=1000, height=450, returned_objects=[])
 
     st.markdown("### 📦 Warehouse Execution Instructions")
     lifo_sequence = opt_route[1:-1][::-1]
@@ -224,7 +224,7 @@ elif mode == "Mode C: Visual Ingestion (Camera)":
             
             # Draw detections for proof
             res_plotted = results[0].plot()
-            st.image(res_plotted, caption=f"YOLO Detected {box_count} Packages", use_column_width=True)
+            st.image(res_plotted, caption=f"YOLO Detected {box_count} Packages", use_container_width=True)
             
             if box_count > 0:
                 sample_size = min(box_count, len(MOCK_POOL))
