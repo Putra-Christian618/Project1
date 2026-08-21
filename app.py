@@ -16,6 +16,7 @@ except ImportError:
 
 # === CONFIGURATION & CACHING ===
 st.set_page_config(page_title="EcoRouter AI", layout="wide")
+FUEL_PRICE_IDR = 16000  # Pertamax Price per Liter
 
 @st.cache_resource
 def load_yolo_model():
@@ -87,13 +88,11 @@ class ExactFuelRouter:
         manager = pywrapcp.RoutingIndexManager(self.num_nodes, 1, 0)
         routing = pywrapcp.RoutingModel(manager)
 
-        # 1. Base Travel Cost (Scaled by 30,000 for integer precision)
         def dist_callback(from_idx, to_idx):
             return int(self.dist_matrix[manager.IndexToNode(from_idx)][manager.IndexToNode(to_idx)]) * 30000
         transit_idx = routing.RegisterTransitCallback(dist_callback)
         routing.SetArcCostEvaluatorOfAllVehicles(transit_idx)
 
-        # 2. Payload Penalty Tracking
         def raw_dist_callback(from_idx, to_idx):
             return int(self.dist_matrix[manager.IndexToNode(from_idx)][manager.IndexToNode(to_idx)])
         raw_transit_idx = routing.RegisterTransitCallback(raw_dist_callback)
@@ -104,7 +103,6 @@ class ExactFuelRouter:
             weight_penalty = int(self.weights[i] * 5)
             raw_dist_dim.SetCumulVarSoftUpperBound(manager.NodeToIndex(i), 0, weight_penalty)
 
-        # 3. Execution
         search_params = pywrapcp.DefaultRoutingSearchParameters()
         search_params.first_solution_strategy = routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
         search_params.local_search_metaheuristic = routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
@@ -124,25 +122,21 @@ class ExactFuelRouter:
 # === UI COMPONENTS ===
 def plot_routes_on_map(coords, std_route, opt_route):
     """Generates an interactive Folium map comparing the two routes."""
-    # Convert "lon,lat" strings to [lat, lon] floats for Folium
     lat_lons = [[float(c.split(',')[1]), float(c.split(',')[0])] for c in coords]
-    m = folium.Map(location=lat_lons[0], zoom_start=11, tiles="CartoDB positron")
+    m = folium.Map(location=lat_lons[0], zoom_start=10, tiles="CartoDB positron")
     
-    # Render Nodes
     for i, (lat, lon) in enumerate(lat_lons):
         color = 'darkred' if i == 0 else 'blue'
         label = "Depot" if i == 0 else f"Stop {i}"
         folium.Marker([lat, lon], popup=label, icon=folium.Icon(color=color)).add_to(m)
         
-    # Render Standard Route (Red, Dashed)
     folium.PolyLine([lat_lons[idx] for idx in std_route], color="red", weight=3, opacity=0.6, dash_array='5, 5', tooltip="Standard Route").add_to(m)
-    # Render Optimized Route (Green, Solid)
     folium.PolyLine([lat_lons[idx] for idx in opt_route], color="green", weight=5, opacity=0.9, tooltip="EcoRoute AI").add_to(m)
     
     return m
 
 def execute_pipeline(coords, weights, volumes):
-    """Handles routing calculation and rendering the metric dashboard."""
+    """Handles routing calculation and rendering the financial metric dashboard."""
     router = ExactFuelRouter(coords, weights, volumes)
     std_route = router.solve_greedy()
     opt_route = router.solve_exact_fuel()
@@ -151,15 +145,35 @@ def execute_pipeline(coords, weights, volumes):
         st.error("Vehicle capacity exceeded. Cannot calculate route.")
         return
 
+    # Calculate Fuel
     std_fuel = router.calculate_fuel(std_route)
     opt_fuel = router.calculate_fuel(opt_route)
     savings_pct = ((std_fuel - opt_fuel) / std_fuel) * 100 if std_fuel > 0 else 0
+    
+    # Calculate Financials
+    std_cost = std_fuel * FUEL_PRICE_IDR
+    opt_cost = opt_fuel * FUEL_PRICE_IDR
+    money_saved = std_cost - opt_cost
 
-    st.markdown("### 📊 Live Telemetry & Metrics")
+    st.markdown("### 📊 Live Financial & Telemetry Metrics")
     col1, col2, col3 = st.columns(3)
-    col1.metric("Fuel Saved", f"{savings_pct:.2f}%", f"{(std_fuel - opt_fuel):.2f} Liters")
-    col2.metric("Standard Path Est.", f"{std_fuel:.2f} L", delta_color="inverse")
-    col3.metric("EcoRoute Est.", f"{opt_fuel:.2f} L")
+    
+    col1.metric(
+        "Optimization Efficiency", 
+        f"{savings_pct:.2f}%", 
+        f"Saved {std_fuel - opt_fuel:.2f} Liters"
+    )
+    col2.metric(
+        "Standard Path Cost", 
+        f"Rp {std_cost:,.0f}", 
+        f"{std_fuel:.2f} L used", 
+        delta_color="inverse"
+    )
+    col3.metric(
+        "EcoRoute AI Cost", 
+        f"Rp {opt_cost:,.0f}", 
+        f"Rp {money_saved:,.0f} Saved"
+    )
     
     st.markdown("### 🗺️ Route Visualization")
     st.caption("🔴 Red (Dashed): Standard Shortest-Path | 🟢 Green (Solid): Ton-Kilometer Optimized")
@@ -175,13 +189,26 @@ def execute_pipeline(coords, weights, volumes):
 st.title("EcoRouter AI: Payload-Aware Logistics")
 st.markdown("Dynamic fuel optimization using Computer Vision and LIFO warehouse constraints.")
 
-MOCK_DEPOT = ("106.816666,-6.200000", 0, 0)
+# Expanded Jabodetabek Depots
+DEPOTS = {
+    "Central Jakarta (Hub)": ("106.816666,-6.200000", 0, 0),
+    "South Tangerang (Hub)": ("106.711400,-6.288600", 0, 0),
+    "Depok (Hub)": ("106.827200,-6.402500", 0, 0),
+    "Bekasi (Hub)": ("106.989600,-6.233600", 0, 0)
+}
+
+# Expanded 20-Point Jabodetabek Coordinate Pool
 MOCK_POOL = [
-    ("106.825000,-6.210000", 15, 20000), ("106.835000,-6.215000", 25, 30000),
+    ("106.825000,-6.210000", 15, 20000), ("106.835000,-6.215000", 25, 30000), 
     ("106.845000,-6.220000", 10, 15000), ("106.855000,-6.230000", 5, 10000),
     ("106.989600,-6.269000", 850, 400000), ("106.798300,-6.262500", 20, 15000),
     ("106.628800,-6.178300", 800, 400000), ("106.890000,-6.150000", 350, 300000),
-    ("106.750000,-6.110000", 350, 300000), ("106.741000,-6.187300", 30, 15000)
+    ("106.750000,-6.110000", 350, 300000), ("106.741000,-6.187300", 30, 15000),
+    ("106.797200,-6.597100", 45, 45000), ("106.806000,-6.598000", 120, 90000), # Bogor
+    ("106.900000,-6.160000", 55, 30000), ("106.890000,-6.370000", 210, 180000), # Kelapa Gading, Cibubur
+    ("106.738300,-6.106600", 12, 10000), ("106.650000,-6.300000", 500, 350000), # PIK, BSD
+    ("106.820000,-6.290000", 35, 20000), ("106.870000,-6.210000", 75, 50000), 
+    ("107.010000,-6.250000", 600, 400000), ("106.720000,-6.200000", 18, 15000)
 ]
 
 mode = st.sidebar.radio("Select Demonstration Mode", 
@@ -190,23 +217,29 @@ mode = st.sidebar.radio("Select Demonstration Mode",
 if mode == "Mode A: Curated Benchmarks":
     scenario = st.selectbox("Select Scenario:", ["The Tangerang Whale (Extreme Weight Outlier)", "Balanced Urban Run (Uniform Data)"])
     if st.button("Calculate Optimal Route"):
+        depot = DEPOTS["Central Jakarta (Hub)"]
         if "Tangerang" in scenario:
-            coords = [MOCK_DEPOT[0], "106.7983,-6.2625", "106.8000,-6.2650", "106.8100,-6.2750", "106.6288,-6.1783"]
+            coords = [depot[0], "106.7983,-6.2625", "106.8000,-6.2650", "106.8100,-6.2750", "106.6288,-6.1783"]
             weights = [0, 15, 20, 10, 800]
             volumes = [0, 10000, 10000, 10000, 400000]
         else:
-            coords = [MOCK_DEPOT[0], "106.8200,-6.1800", "106.8250,-6.1700", "106.8300,-6.1600", "106.8100,-6.1750"]
+            coords = [depot[0], "106.8200,-6.1800", "106.8250,-6.1700", "106.8300,-6.1600", "106.8100,-6.1750"]
             weights = [0, 40, 35, 50, 45]
             volumes = [0, 20000, 20000, 20000, 20000]
         execute_pipeline(coords, weights, volumes)
 
 elif mode == "Mode B: Dynamic Random Sandbox":
-    package_count = st.slider("Select number of packages in fleet:", 3, 7, 4)
+    st.markdown("### Configure Regional Logistics Run")
+    selected_depot_name = st.selectbox("Select Departure Depot:", list(DEPOTS.keys()))
+    package_count = st.slider("Select number of packages in fleet:", 3, 10, 4)
+    
     if st.button("Generate Random Fleet & Optimize"):
+        current_depot = DEPOTS[selected_depot_name]
         selected = random.sample(MOCK_POOL, package_count)
-        coords = [MOCK_DEPOT[0]] + [item[0] for item in selected]
-        weights = [MOCK_DEPOT[1]] + [item[1] for item in selected]
-        volumes = [MOCK_DEPOT[2]] + [item[2] for item in selected]
+        
+        coords = [current_depot[0]] + [item[0] for item in selected]
+        weights = [current_depot[1]] + [item[1] for item in selected]
+        volumes = [current_depot[2]] + [item[2] for item in selected]
         execute_pipeline(coords, weights, volumes)
 
 elif mode == "Mode C: Visual Ingestion (Camera)":
@@ -222,16 +255,18 @@ elif mode == "Mode C: Visual Ingestion (Camera)":
             results = model.predict(source=img, conf=0.25, verbose=False)
             box_count = len(results[0].boxes)
             
-            # Draw detections for proof
             res_plotted = results[0].plot()
             st.image(res_plotted, caption=f"YOLO Detected {box_count} Packages", use_container_width=True)
             
             if box_count > 0:
                 sample_size = min(box_count, len(MOCK_POOL))
                 selected = random.sample(MOCK_POOL, sample_size)
-                coords = [MOCK_DEPOT[0]] + [item[0] for item in selected]
-                weights = [MOCK_DEPOT[1]] + [item[1] for item in selected]
-                volumes = [MOCK_DEPOT[2]] + [item[2] for item in selected]
+                # Defaults to Central Jakarta for Visual Ingestion
+                depot = DEPOTS["Central Jakarta (Hub)"]
+                
+                coords = [depot[0]] + [item[0] for item in selected]
+                weights = [depot[1]] + [item[1] for item in selected]
+                volumes = [depot[2]] + [item[2] for item in selected]
                 execute_pipeline(coords, weights, volumes)
             else:
                 st.warning("No packages detected. Route generation halted.")
