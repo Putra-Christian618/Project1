@@ -12,45 +12,149 @@ try:
     from ortools.constraint_solver import pywrapcp
     from ultralytics import YOLO
 except ImportError:
-    st.error("Critical dependencies missing. Check requirements.txt.")
+    st.error("Missing dependencies — install everything in requirements.txt, then restart the app.")
 
-# === CONFIGURATION, CACHING & CSS INJECTION ===
-st.set_page_config(page_title="EcoRouter AI", layout="wide")
-FUEL_PRICE_IDR = 16000  # Pertamax Price per Liter
+# ============================================================
+# CONFIGURATION
+# ============================================================
+st.set_page_config(page_title="EcoRouter AI", page_icon="🧭", layout="wide")
+FUEL_PRICE_IDR = 16000  # Pertamax price per liter (IDR)
 
-# Custom CSS for "Sleek Eco-Tech" Enterprise UI
+# Route + brand palette — kept in sync with .streamlit/config.toml and the SVG mark below
+COLOR_ECO = "#35D69B"     # optimized / EcoRouter route
+COLOR_BEACON = "#FF8A3D"  # baseline / standard route
+
+# ============================================================
+# STYLE — "Night Dispatch Console" theme
+# ============================================================
 st.markdown("""
 <style>
-    /* Reduce default top padding for a web-app feel */
-    .block-container {
-        padding-top: 2rem;
-        padding-bottom: 2rem;
+    @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+    :root {
+        --ink: #0A0F0D;
+        --panel: #121B17;
+        --panel-2: #16211B;
+        --hairline: rgba(148, 179, 163, 0.16);
+        --hairline-strong: rgba(148, 179, 163, 0.32);
+        --eco: #35D69B;
+        --beacon: #FF8A3D;
+        --paper: #EAF3EE;
+        --mist: #86998D;
     }
-    
-    /* Main Typography */
-    h1 {
-        font-family: 'Helvetica Neue', sans-serif;
-        font-weight: 700;
-        letter-spacing: -0.5px;
+
+    /* ---- app shell ---- */
+    [data-testid="stAppViewContainer"], [data-testid="stApp"] {
+        background:
+            radial-gradient(ellipse 900px 480px at 12% -8%, rgba(53,214,155,0.07), transparent 60%),
+            radial-gradient(ellipse 700px 480px at 100% 0%, rgba(255,138,61,0.05), transparent 55%),
+            var(--ink);
     }
-    
-    /* Sleek Metric Cards */
-    div[data-testid="metric-container"] {
-        background-color: #1E2320; /* Very dark subtle green */
-        border: 1px solid #2E4035; /* Sharp eco-green border */
-        padding: 5% 5% 5% 10%;
-        border-radius: 8px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+    .block-container { padding-top: 1.75rem; padding-bottom: 3rem; max-width: 1180px; }
+    html, body, p, span, div, label { font-family: 'IBM Plex Sans', -apple-system, sans-serif; }
+    h1, h2, h3, h4 { font-family: 'Rajdhani', sans-serif; color: var(--paper); }
+    label, [data-testid="stWidgetLabel"] p { color: var(--paper) !important; }
+    [data-testid="stCaptionContainer"], .stCaption, small { color: var(--mist) !important; }
+
+    ::-webkit-scrollbar { width: 10px; height: 10px; }
+    ::-webkit-scrollbar-track { background: var(--ink); }
+    ::-webkit-scrollbar-thumb { background: var(--hairline-strong); border-radius: 6px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--eco); }
+
+    hr { border-color: var(--hairline) !important; }
+    iframe { border-radius: 12px; border: 1px solid var(--hairline); }
+
+    /* ---- header / wordmark ---- */
+    @keyframes eco-fade-up { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+    .eco-header {
+        display: flex; align-items: center; gap: 1.15rem;
+        padding-bottom: 1.4rem; margin-bottom: 1.6rem;
+        border-bottom: 1px solid var(--hairline);
+        animation: eco-fade-up 0.55s ease-out;
     }
-    
-    /* Metric Label Typography */
-    div[data-testid="metric-container"] label {
-        color: #A3D8B4 !important; /* Soft highlight for labels */
-        font-size: 1rem;
-        font-weight: 600;
+    .eco-logo { flex-shrink: 0; filter: drop-shadow(0 0 16px rgba(53,214,155,0.20)); }
+    .eco-eyebrow-inline {
+        font-family: 'Rajdhani', sans-serif; font-size: 0.78rem; font-weight: 600;
+        letter-spacing: 0.16em; text-transform: uppercase; color: var(--mist); margin: 0 0 0.15rem 0;
+    }
+    h1.eco-title { font-family: 'Rajdhani', sans-serif; font-size: 2.6rem; font-weight: 700; line-height: 1; margin: 0.1rem 0; color: var(--paper); letter-spacing: -0.01em; }
+    .eco-title-accent { color: var(--eco); }
+    .eco-tagline { font-size: 0.98rem; color: var(--mist); margin: 0.35rem 0 0 0; max-width: 620px; }
+
+    /* ---- sidebar ---- */
+    [data-testid="stSidebar"] { background: var(--panel) !important; border-right: 1px solid var(--hairline); }
+    .eco-side-brand { display: flex; align-items: center; gap: 0.6rem; padding: 0.2rem 0 1.1rem 0; margin-bottom: 0.75rem; border-bottom: 1px solid var(--hairline); }
+    .eco-side-brand-text { line-height: 1.15; font-family: 'Rajdhani', sans-serif; }
+    .eco-side-brand-text strong { display: block; font-size: 1.02rem; color: var(--paper); font-weight: 700; }
+    .eco-side-brand-text span { display: block; font-size: 0.64rem; color: var(--eco); letter-spacing: 0.18em; font-weight: 600; }
+
+    /* ---- eyebrow / section labels ---- */
+    .eyebrow {
+        display: flex; align-items: center; gap: 9px;
+        font-family: 'Rajdhani', sans-serif; font-size: 0.8rem; font-weight: 600;
+        letter-spacing: 0.14em; text-transform: uppercase; color: var(--mist);
+        margin: 1.9rem 0 0.85rem 0;
+    }
+    .eyebrow::before { content: ''; width: 7px; height: 7px; background: var(--eco); transform: rotate(45deg); border-radius: 1px; flex-shrink: 0; box-shadow: 0 0 8px rgba(53,214,155,0.7); }
+    .eyebrow.first { margin-top: 0.2rem; }
+    .pulse-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--eco); display: inline-block; animation: eco-pulse 2s infinite; margin-right: 2px; }
+    @keyframes eco-pulse { 0% { box-shadow: 0 0 0 0 rgba(53,214,155,0.45); } 70% { box-shadow: 0 0 0 7px rgba(53,214,155,0); } 100% { box-shadow: 0 0 0 0 rgba(53,214,155,0); } }
+
+    /* ---- metrics ---- */
+    div[data-testid="stMetric"], div[data-testid="metric-container"] {
+        background: linear-gradient(180deg, var(--panel-2), var(--panel));
+        border: 1px solid var(--hairline); border-radius: 12px; padding: 1.05rem 1.3rem;
+        transition: border-color .2s ease, transform .2s ease;
+    }
+    div[data-testid="stMetric"]:hover, div[data-testid="metric-container"]:hover { border-color: var(--hairline-strong); transform: translateY(-2px); }
+    [data-testid="stMetricLabel"] { font-family: 'Rajdhani', sans-serif !important; text-transform: uppercase; letter-spacing: .07em; font-size: .82rem !important; color: var(--mist) !important; }
+    [data-testid="stMetricValue"] { font-family: 'IBM Plex Mono', monospace !important; color: var(--paper) !important; }
+    [data-testid="stMetricDelta"] { font-family: 'IBM Plex Mono', monospace !important; }
+
+    /* ---- buttons ---- */
+    .stButton > button {
+        background: linear-gradient(135deg, var(--eco), #23B589); color: #06110D; border: none; border-radius: 8px;
+        font-family: 'Rajdhani', sans-serif; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+        padding: .6rem 1.5rem; transition: transform .15s ease, box-shadow .15s ease;
+    }
+    .stButton > button:hover { transform: translateY(-1px); box-shadow: 0 8px 22px rgba(53,214,155,.32); }
+    .stButton > button:focus-visible { outline: 2px solid var(--eco); outline-offset: 2px; }
+
+    /* ---- alerts ---- */
+    .stAlert, [data-testid="stAlert"] { background: var(--panel-2) !important; border: 1px solid var(--hairline); border-radius: 9px; }
+    .stAlert p, [data-testid="stAlert"] p { font-family: 'IBM Plex Sans', sans-serif; }
+
+    /* ---- legend chips ---- */
+    .route-legend { display: flex; flex-wrap: wrap; gap: 1.4rem; margin: 0 0 1rem 0; font-size: .86rem; color: var(--mist); }
+    .legend-chip { display: flex; align-items: center; gap: .5rem; }
+    .legend-line { width: 20px; height: 3px; border-radius: 2px; display: inline-block; }
+
+    @media (max-width: 640px) {
+        .eco-header { flex-direction: column; align-items: flex-start; gap: .75rem; }
+        h1.eco-title { font-size: 2rem !important; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        * { animation: none !important; transition: none !important; }
     }
 </style>
 """, unsafe_allow_html=True)
+
+
+def eyebrow(text, first=False, live=False):
+    """Renders a small tracked-uppercase section label with the waypoint tick."""
+    cls = "eyebrow first" if first else "eyebrow"
+    prefix = '<span class="pulse-dot"></span>' if live else ""
+    st.markdown(f'<div class="{cls}">{prefix}{text}</div>', unsafe_allow_html=True)
+
+
+def brand_mark(size=54, stroke_width=2.2):
+    """Inline SVG wordmark: a route bending between a baseline node and an optimized node."""
+    return f'''<svg width="{size}" height="{size}" viewBox="0 0 54 54" xmlns="http://www.w3.org/2000/svg">
+        <rect x="1.5" y="1.5" width="51" height="51" rx="14" fill="#121B17" stroke="#24352C" stroke-width="1"/>
+        <path d="M15 37 C15 30 17 22 25 19 C31 17 35 20 39 17" fill="none" stroke="{COLOR_ECO}" stroke-width="{stroke_width}" stroke-linecap="round"/>
+        <circle cx="15" cy="37" r="3.4" fill="{COLOR_BEACON}"/>
+        <circle cx="39" cy="17" r="3.4" fill="{COLOR_ECO}"/>
+    </svg>'''
 
 
 @st.cache_resource
@@ -58,10 +162,12 @@ def load_yolo_model():
     """Caches the model in VRAM to prevent Out-Of-Memory crashes on button clicks."""
     try:
         return YOLO("models/best.pt")
-    except Exception as e:
+    except Exception:
         return None
 
-# === PHASE 3: EXACT FUEL ROUTING ENGINE ===
+# ============================================================
+# PHASE 3: EXACT FUEL ROUTING ENGINE
+# ============================================================
 class ExactFuelRouter:
     def __init__(self, coords, weights_kg, volumes_cm3, vehicle_max_vol=1000000):
         self.coords = coords
@@ -158,22 +264,22 @@ class ExactFuelRouter:
 def plot_routes_on_map(coords, std_route, opt_route):
     """Generates an interactive Folium map comparing the two routes with parallel rendering."""
     lat_lons = [[float(c.split(',')[1]), float(c.split(',')[0])] for c in coords]
-    m = folium.Map(location=lat_lons[0], zoom_start=11, tiles="CartoDB positron")
-    
+    m = folium.Map(location=lat_lons[0], zoom_start=11, tiles="CartoDB dark_matter")
+
     # 1. Render Delivery Nodes
     for i, (lat, lon) in enumerate(lat_lons):
-        color = 'darkred' if i == 0 else 'blue'
+        color = 'white' if i == 0 else 'cadetblue'
         label = "Depot" if i == 0 else f"Stop {i}"
-        folium.Marker([lat, lon], popup=label, icon=folium.Icon(color=color)).add_to(m)
-        
+        folium.Marker([lat, lon], popup=label, tooltip=label, icon=folium.Icon(color=color)).add_to(m)
+
     # 2. Render Standard Route (Shifted slightly so it runs parallel)
-    OFFSET = 0.00030 # Approx 30 meters
+    OFFSET = 0.00030  # Approx 30 meters
     shifted_std_route = [[lat_lons[idx][0] + OFFSET, lat_lons[idx][1] + OFFSET] for idx in std_route]
-    folium.PolyLine(shifted_std_route, color="#E63946", weight=3, opacity=0.8, dash_array='5, 6', tooltip="Standard Route").add_to(m)
-    
+    folium.PolyLine(shifted_std_route, color=COLOR_BEACON, weight=3, opacity=0.85, dash_array='5, 6', tooltip="Standard Route").add_to(m)
+
     # 3. Render Optimized Route (Accurate to coordinates)
-    folium.PolyLine([lat_lons[idx] for idx in opt_route], color="#2A9D8F", weight=5, opacity=0.9, tooltip="EcoRoute AI").add_to(m)
-    
+    folium.PolyLine([lat_lons[idx] for idx in opt_route], color=COLOR_ECO, weight=5, opacity=0.95, tooltip="EcoRouter Route").add_to(m)
+
     return m
 
 def execute_pipeline(coords, weights, volumes):
@@ -181,54 +287,70 @@ def execute_pipeline(coords, weights, volumes):
     router = ExactFuelRouter(coords, weights, volumes)
     std_route = router.solve_greedy()
     opt_route = router.solve_exact_fuel()
-    
+
     if not opt_route:
-        st.error("Vehicle capacity exceeded. Cannot calculate route.")
+        st.error("This load exceeds the vehicle's volume capacity. Remove a package or split the run across two trips.")
         return
 
     # Calculate Fuel
     std_fuel = router.calculate_fuel(std_route)
     opt_fuel = router.calculate_fuel(opt_route)
     savings_pct = ((std_fuel - opt_fuel) / std_fuel) * 100 if std_fuel > 0 else 0
-    
+
     # Calculate Financials
     std_cost = std_fuel * FUEL_PRICE_IDR
     opt_cost = opt_fuel * FUEL_PRICE_IDR
     money_saved = std_cost - opt_cost
 
-    st.markdown("### Live Financial & Telemetry Metrics")
-    col1, col2, col3 = st.columns(3)
-    
-    col1.metric(
-        "Optimization Efficiency", 
-        f"{savings_pct:.2f}%", 
-        f"Saved {std_fuel - opt_fuel:.2f} Liters"
-    )
-    col2.metric(
-        "Standard Path Cost", 
-        f"Rp {std_cost:,.0f}", 
-        f"{std_fuel:.2f} L used", 
-        delta_color="inverse"
-    )
-    col3.metric(
-        "EcoRoute AI Cost", 
-        f"Rp {opt_cost:,.0f}", 
-        f"Rp {money_saved:,.0f} Saved"
-    )
-    
-    st.markdown("### Route Visualization")
-    st.caption("Red Dashes: Standard Shortest-Path | Green Lines: Ton-Kilometer Optimized")
-    map_obj = plot_routes_on_map(coords, std_route, opt_route)
-    st_folium(map_obj, width=1000, height=450, returned_objects=[])
+    eyebrow("Fuel &amp; Cost Telemetry")
+    with st.container(border=True):
+        col1, col2, col3 = st.columns(3)
+        col1.metric(
+            "Fuel Efficiency Gain",
+            f"{savings_pct:.2f}%",
+            f"Saved {std_fuel - opt_fuel:.2f} L"
+        )
+        col2.metric(
+            "Standard Route Cost",
+            f"Rp {std_cost:,.0f}",
+            f"{std_fuel:.2f} L used",
+            delta_color="inverse"
+        )
+        col3.metric(
+            "EcoRouter Route Cost",
+            f"Rp {opt_cost:,.0f}",
+            f"Rp {money_saved:,.0f} saved"
+        )
 
-    st.markdown("### Warehouse Execution Instructions")
+    eyebrow("Route Map", live=True)
+    st.markdown(f'''<div class="route-legend">
+        <span class="legend-chip"><span class="legend-line" style="background:{COLOR_BEACON};opacity:.85;"></span>Standard route — shortest path only</span>
+        <span class="legend-chip"><span class="legend-line" style="background:{COLOR_ECO};"></span>EcoRouter route — optimized for payload-weighted fuel burn</span>
+    </div>''', unsafe_allow_html=True)
+    with st.container(border=True):
+        map_obj = plot_routes_on_map(coords, std_route, opt_route)
+        st_folium(map_obj, width=1000, height=460, returned_objects=[])
+
+    eyebrow("Loading Sequence")
     lifo_sequence = opt_route[1:-1][::-1]
-    st.info(f"**LIFO Loading Order (Back to Front):** Load items in this exact sequence: **{lifo_sequence}**")
+    sequence_str = " → ".join(f"Stop {n}" for n in lifo_sequence)
+    st.info(
+        f"**Back-to-front loading order:** {sequence_str}\n\n"
+        "Load in this order so every stop sits nearest the door exactly when it's needed."
+    )
 
 
-# === MAIN APP FLOW ===
-st.title("EcoRouter AI: Payload-Aware Logistics")
-st.markdown("Dynamic fuel optimization using Computer Vision and LIFO warehouse constraints.")
+# ============================================================
+# HEADER
+# ============================================================
+st.markdown(f'''<div class="eco-header">
+    <div class="eco-logo">{brand_mark(56, 2.4)}</div>
+    <div>
+        <div class="eco-eyebrow-inline">Jabodetabek · Fleet Operations</div>
+        <h1 class="eco-title">EcoRouter <span class="eco-title-accent">AI</span></h1>
+        <p class="eco-tagline">Every stop lightens the load — EcoRouter sequences deliveries around it to burn the least fuel getting there.</p>
+    </div>
+</div>''', unsafe_allow_html=True)
 
 # Expanded Jabodetabek Depots
 DEPOTS = {
@@ -252,12 +374,37 @@ MOCK_POOL = [
     ("107.010000,-6.250000", 600, 400000), ("106.720000,-6.200000", 18, 15000)
 ]
 
-mode = st.sidebar.radio("Select Demonstration Mode", 
-    ["Mode A: Curated Benchmarks", "Mode B: Dynamic Random Sandbox", "Mode C: Visual Ingestion (Camera)"])
+# ============================================================
+# SIDEBAR
+# ============================================================
+st.sidebar.markdown(f'''<div class="eco-side-brand">
+    {brand_mark(34, 2.6)}
+    <div class="eco-side-brand-text"><strong>EcoRouter</strong><span>AI CONSOLE</span></div>
+</div>''', unsafe_allow_html=True)
 
-if mode == "Mode A: Curated Benchmarks":
-    scenario = st.selectbox("Select Scenario:", ["The Tangerang Whale (Extreme Weight Outlier)", "Balanced Urban Run (Uniform Data)"])
-    if st.button("Calculate Optimal Route"):
+st.sidebar.markdown('<div class="eyebrow first">Operating Mode</div>', unsafe_allow_html=True)
+mode = st.sidebar.radio(
+    "Operating mode",
+    ["A · Curated Benchmarks", "B · Dynamic Sandbox", "C · Visual Ingestion"],
+    captions=[
+        "Two fixed edge-case scenarios",
+        "Randomized fleet from the regional pool",
+        "Camera + computer vision package count",
+    ],
+    label_visibility="collapsed",
+)
+
+if mode == "A · Curated Benchmarks":
+    eyebrow("Scenario", first=True)
+    with st.container(border=True):
+        scenario = st.selectbox(
+            "Scenario",
+            ["The Tangerang Whale (Extreme Weight Outlier)", "Balanced Urban Run (Uniform Data)"],
+            label_visibility="collapsed",
+        )
+        run_a = st.button("Calculate optimal route")
+
+    if run_a:
         depot = DEPOTS["Central Jakarta (Hub)"]
         if "Tangerang" in scenario:
             coords = [depot[0], "106.7983,-6.2625", "106.8000,-6.2650", "106.8100,-6.2750", "106.6288,-6.1783"]
@@ -269,45 +416,49 @@ if mode == "Mode A: Curated Benchmarks":
             volumes = [0, 20000, 20000, 20000, 20000]
         execute_pipeline(coords, weights, volumes)
 
-elif mode == "Mode B: Dynamic Random Sandbox":
-    st.markdown("### Configure Regional Logistics Run")
-    selected_depot_name = st.selectbox("Select Departure Depot:", list(DEPOTS.keys()))
-    package_count = st.slider("Select number of packages in fleet:", 3, 10, 4)
-    
-    if st.button("Generate Random Fleet & Optimize"):
+elif mode == "B · Dynamic Sandbox":
+    eyebrow("Configure the Run", first=True)
+    with st.container(border=True):
+        selected_depot_name = st.selectbox("Departure depot", list(DEPOTS.keys()))
+        package_count = st.slider("Number of packages", 3, 10, 4)
+        run_b = st.button("Generate random fleet & optimize")
+
+    if run_b:
         current_depot = DEPOTS[selected_depot_name]
         selected = random.sample(MOCK_POOL, package_count)
-        
+
         coords = [current_depot[0]] + [item[0] for item in selected]
         weights = [current_depot[1]] + [item[1] for item in selected]
         volumes = [current_depot[2]] + [item[2] for item in selected]
         execute_pipeline(coords, weights, volumes)
 
-elif mode == "Mode C: Visual Ingestion (Camera)":
-    st.info("Allow browser camera permissions to execute Phase 1 ingestion.")
-    cam_image = st.camera_input("Scan Logistics Cargo Bay")
-    
+elif mode == "C · Visual Ingestion":
+    eyebrow("Visual Ingestion", first=True)
+    with st.container(border=True):
+        st.info("Allow camera access, then point it at the cargo bay — EcoRouter counts packages automatically.")
+        cam_image = st.camera_input("Scan the cargo bay")
+
     if cam_image is not None:
         model = load_yolo_model()
         if model is None:
-            st.error("Weights file not found at models/best.pt. Cannot execute Phase 1.")
+            st.error("Detection model not found. Place the trained weights at `models/best.pt`, then reload the app.")
         else:
             img = Image.open(cam_image)
             results = model.predict(source=img, conf=0.25, verbose=False)
             box_count = len(results[0].boxes)
-            
+
             res_plotted = results[0].plot()
-            st.image(res_plotted, caption=f"YOLO Detected {box_count} Packages", use_container_width=True)
-            
+            st.image(res_plotted, caption=f"{box_count} packages detected", use_container_width=True)
+
             if box_count > 0:
                 sample_size = min(box_count, len(MOCK_POOL))
                 selected = random.sample(MOCK_POOL, sample_size)
                 # Defaults to Central Jakarta for Visual Ingestion
                 depot = DEPOTS["Central Jakarta (Hub)"]
-                
+
                 coords = [depot[0]] + [item[0] for item in selected]
                 weights = [depot[1]] + [item[1] for item in selected]
                 volumes = [depot[2]] + [item[2] for item in selected]
                 execute_pipeline(coords, weights, volumes)
             else:
-                st.warning("No packages detected. Route generation halted.")
+                st.warning("No packages detected in frame. Reposition the camera and scan again.")
