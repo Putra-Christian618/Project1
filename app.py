@@ -14,9 +14,44 @@ try:
 except ImportError:
     st.error("Critical dependencies missing. Check requirements.txt.")
 
-# === CONFIGURATION & CACHING ===
+# === CONFIGURATION, CACHING & CSS INJECTION ===
 st.set_page_config(page_title="EcoRouter AI", layout="wide")
 FUEL_PRICE_IDR = 16000  # Pertamax Price per Liter
+
+# Custom CSS for "Sleek Eco-Tech" Enterprise UI
+st.markdown("""
+<style>
+    /* Reduce default top padding for a web-app feel */
+    .block-container {
+        padding-top: 2rem;
+        padding-bottom: 2rem;
+    }
+    
+    /* Main Typography */
+    h1 {
+        font-family: 'Helvetica Neue', sans-serif;
+        font-weight: 700;
+        letter-spacing: -0.5px;
+    }
+    
+    /* Sleek Metric Cards */
+    div[data-testid="metric-container"] {
+        background-color: #1E2320; /* Very dark subtle green */
+        border: 1px solid #2E4035; /* Sharp eco-green border */
+        padding: 5% 5% 5% 10%;
+        border-radius: 8px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+    }
+    
+    /* Metric Label Typography */
+    div[data-testid="metric-container"] label {
+        color: #A3D8B4 !important; /* Soft highlight for labels */
+        font-size: 1rem;
+        font-weight: 600;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 
 @st.cache_resource
 def load_yolo_model():
@@ -121,17 +156,23 @@ class ExactFuelRouter:
 
 # === UI COMPONENTS ===
 def plot_routes_on_map(coords, std_route, opt_route):
-    """Generates an interactive Folium map comparing the two routes."""
+    """Generates an interactive Folium map comparing the two routes with parallel rendering."""
     lat_lons = [[float(c.split(',')[1]), float(c.split(',')[0])] for c in coords]
-    m = folium.Map(location=lat_lons[0], zoom_start=10, tiles="CartoDB positron")
+    m = folium.Map(location=lat_lons[0], zoom_start=11, tiles="CartoDB positron")
     
+    # 1. Render Delivery Nodes
     for i, (lat, lon) in enumerate(lat_lons):
         color = 'darkred' if i == 0 else 'blue'
         label = "Depot" if i == 0 else f"Stop {i}"
         folium.Marker([lat, lon], popup=label, icon=folium.Icon(color=color)).add_to(m)
         
-    folium.PolyLine([lat_lons[idx] for idx in std_route], color="red", weight=3, opacity=0.6, dash_array='5, 5', tooltip="Standard Route").add_to(m)
-    folium.PolyLine([lat_lons[idx] for idx in opt_route], color="green", weight=5, opacity=0.9, tooltip="EcoRoute AI").add_to(m)
+    # 2. Render Standard Route (Shifted slightly so it runs parallel)
+    OFFSET = 0.00030 # Approx 30 meters
+    shifted_std_route = [[lat_lons[idx][0] + OFFSET, lat_lons[idx][1] + OFFSET] for idx in std_route]
+    folium.PolyLine(shifted_std_route, color="#E63946", weight=3, opacity=0.8, dash_array='5, 6', tooltip="Standard Route").add_to(m)
+    
+    # 3. Render Optimized Route (Accurate to coordinates)
+    folium.PolyLine([lat_lons[idx] for idx in opt_route], color="#2A9D8F", weight=5, opacity=0.9, tooltip="EcoRoute AI").add_to(m)
     
     return m
 
@@ -155,7 +196,7 @@ def execute_pipeline(coords, weights, volumes):
     opt_cost = opt_fuel * FUEL_PRICE_IDR
     money_saved = std_cost - opt_cost
 
-    st.markdown("### 📊 Live Financial & Telemetry Metrics")
+    st.markdown("### Live Financial & Telemetry Metrics")
     col1, col2, col3 = st.columns(3)
     
     col1.metric(
@@ -175,12 +216,12 @@ def execute_pipeline(coords, weights, volumes):
         f"Rp {money_saved:,.0f} Saved"
     )
     
-    st.markdown("### 🗺️ Route Visualization")
-    st.caption("🔴 Red (Dashed): Standard Shortest-Path | 🟢 Green (Solid): Ton-Kilometer Optimized")
+    st.markdown("### Route Visualization")
+    st.caption("Red Dashes: Standard Shortest-Path | Green Lines: Ton-Kilometer Optimized")
     map_obj = plot_routes_on_map(coords, std_route, opt_route)
     st_folium(map_obj, width=1000, height=450, returned_objects=[])
 
-    st.markdown("### 📦 Warehouse Execution Instructions")
+    st.markdown("### Warehouse Execution Instructions")
     lifo_sequence = opt_route[1:-1][::-1]
     st.info(f"**LIFO Loading Order (Back to Front):** Load items in this exact sequence: **{lifo_sequence}**")
 
