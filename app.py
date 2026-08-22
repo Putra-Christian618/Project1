@@ -20,7 +20,7 @@ except ImportError:
 st.set_page_config(page_title="EcoRouter AI", page_icon="🧭", layout="wide")
 FUEL_PRICE_IDR = 16000  # Pertamax price per liter (IDR)
 
-# Route + brand palette — kept in sync with .streamlit/config.toml and the SVG mark below
+# Route + brand palette
 COLOR_ECO = "#35D69B"     # optimized / EcoRouter route
 COLOR_BEACON = "#FF8A3D"  # baseline / standard route
 
@@ -111,7 +111,7 @@ st.markdown("""
     [data-testid="stMetricValue"] { font-family: 'IBM Plex Mono', monospace !important; color: var(--paper) !important; }
     [data-testid="stMetricDelta"] { font-family: 'IBM Plex Mono', monospace !important; }
 
-    /* ---- buttons ---- */
+    /* ---- buttons & file uploader styling ---- */
     .stButton > button {
         background: linear-gradient(135deg, var(--eco), #23B589); color: #06110D; border: none; border-radius: 8px;
         font-family: 'Rajdhani', sans-serif; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
@@ -260,7 +260,9 @@ class ExactFuelRouter:
         route_arr.append(manager.IndexToNode(index))
         return route_arr
 
-# === UI COMPONENTS ===
+# ============================================================
+# UI COMPONENTS
+# ============================================================
 def plot_routes_on_map(coords, std_route, opt_route):
     """Generates an interactive Folium map comparing the two routes with parallel rendering."""
     lat_lons = [[float(c.split(',')[1]), float(c.split(',')[0])] for c in coords]
@@ -302,7 +304,7 @@ def execute_pipeline(coords, weights, volumes):
     opt_cost = opt_fuel * FUEL_PRICE_IDR
     money_saved = std_cost - opt_cost
 
-    eyebrow("Fuel &amp; Cost Telemetry")
+    eyebrow("Fuel & Cost Telemetry")
     with st.container(border=True):
         col1, col2, col3 = st.columns(3)
         col1.metric(
@@ -389,7 +391,7 @@ mode = st.sidebar.radio(
     captions=[
         "Two fixed edge-case scenarios",
         "Randomized fleet from the regional pool",
-        "Camera + computer vision package count",
+        "Camera + file upload ingestion",
     ],
     label_visibility="collapsed",
 )
@@ -435,15 +437,30 @@ elif mode == "B · Dynamic Sandbox":
 elif mode == "C · Visual Ingestion":
     eyebrow("Visual Ingestion", first=True)
     with st.container(border=True):
-        st.info("Allow camera access, then point it at the cargo bay — EcoRouter counts packages automatically.")
-        cam_image = st.camera_input("Scan the cargo bay")
+        st.info("Provide an image of the cargo bay — EcoRouter counts packages automatically.")
+        
+        # Adding a radio button to cleanly toggle between Upload and Camera inputs
+        input_method = st.radio(
+            "Choose image source:", 
+            ["📷 Live Camera", "📁 Upload File"], 
+            horizontal=True
+        )
+        
+        # Variable to hold whichever image source the user provides
+        img_data = None
+        
+        if input_method == "📷 Live Camera":
+            img_data = st.camera_input("Scan the cargo bay", label_visibility="collapsed")
+        else:
+            img_data = st.file_uploader("Upload a local image", type=["jpg", "jpeg", "png"], label_visibility="collapsed")
 
-    if cam_image is not None:
+    if img_data is not None:
         model = load_yolo_model()
         if model is None:
             st.error("Detection model not found. Place the trained weights at `models/best.pt`, then reload the app.")
         else:
-            img = Image.open(cam_image)
+            # PIL Image can read the buffer regardless of whether it came from the camera or file uploader
+            img = Image.open(img_data)
             results = model.predict(source=img, conf=0.25, verbose=False)
             box_count = len(results[0].boxes)
 
@@ -461,4 +478,4 @@ elif mode == "C · Visual Ingestion":
                 volumes = [depot[2]] + [item[2] for item in selected]
                 execute_pipeline(coords, weights, volumes)
             else:
-                st.warning("No packages detected in frame. Reposition the camera and scan again.")
+                st.warning("No packages detected in frame. Adjust the image and try again.")
